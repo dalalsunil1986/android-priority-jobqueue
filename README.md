@@ -1,6 +1,5 @@
-### Different between original project
-Support NetworkUtil.WEB_SOCKET for some jobs can only executed while web socket connected,
-And you should implement your own NetworkUtil.
+# Different to original project
+Add NetworkUtil.WEB_SOCKET to file [NetworkUtil.java](https://github.com/Tougee/android-priority-jobqueue/blob/master/jobqueue/src/main/java/com/birbit/android/jobqueue/network/NetworkUtil.java), so you can separate http_needed jobs and web_socket_needed jobs. Add you should implement your specific NetworkUtil.
 ``` java
 // A job to send a tweet
 public class PostTweetJob extends Job {
@@ -13,8 +12,45 @@ public class PostTweetJob extends Job {
     }
 }
 
-
 ```
+``` kotlin
+class JobNetworkUtil(context: Context): NetworkUtilImpl(context) {
+
+    var webSocket: WebSocketListener? = null
+
+    override fun getNetworkStatus(context: Context): Int {
+        if (isDozing(context)) {
+            return NetworkUtil.DISCONNECTED
+        }
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val netInfo = cm.activeNetworkInfo ?: return NetworkUtil.DISCONNECTED
+        val metered = ConnectivityManagerCompat.isActiveNetworkMetered(cm)
+        if (netInfo.isConnected) {
+            if (webSocket?.connected == true) {
+                return NetworkUtil.WEB_SOCKET
+            }
+            return if (!metered) {
+                NetworkUtil.UNMETERED
+            } else {
+                NetworkUtil.METERED
+            }
+        } else {
+            return NetworkUtil.DISCONNECTED
+        }
+    }
+
+    fun setWebSocket(webSocket: WebSocketListener) {
+        this.webSocket = webSocket
+        webSocket.setConnectStateListener(object : ConnectStateListener {
+            override fun onChange(context: Context) {
+                dispatchNetworkChange(context)
+            }
+        })
+    }
+}
+```
+
+
 
 ### V2 is here!
 There is a major internal rewrite of this project for more stability and new features. If you were using v1, see the migration guide here: [migration from v1 to v2](https://github.com/yigit/android-priority-jobqueue/wiki/V1-to-V2-migration)
