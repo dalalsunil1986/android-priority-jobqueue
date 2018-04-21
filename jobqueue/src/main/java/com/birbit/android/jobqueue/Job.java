@@ -4,6 +4,8 @@ import android.content.Context;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
+import com.birbit.android.jobqueue.callback.JobCallback;
+import com.birbit.android.jobqueue.callback.JobResultCallback;
 import com.birbit.android.jobqueue.log.JqLog;
 import com.birbit.android.jobqueue.network.NetworkUtil;
 import com.birbit.android.jobqueue.timer.Timer;
@@ -26,21 +28,31 @@ abstract public class Job implements Serializable {
     public static final int DEFAULT_RETRY_LIMIT = 20;
     static final String SINGLE_ID_TAG_PREFIX = "job-single-id:";
     // set either in constructor or by the JobHolder
-    /**package**/ private transient String id;
+    /**
+     * package
+     **/
+    private transient String id;
     // values set from params
     @NetworkUtil.NetworkStatus
     transient int requiredNetworkType;
     // values set after job is covered by a JobHolder
     private transient String groupId;
     private transient boolean persistent;
+    private transient boolean async;
+    private transient int runResult;
     private transient Set<String> readonlyTags;
 
     private transient int currentRunCount;
-    /**package**/ transient int priority;
+    /**
+     * package
+     **/
+    transient int priority;
     private transient long delayInMs;
     private transient long deadlineInMs;
     private transient boolean cancelOnDeadline;
     /*package*/ transient volatile boolean cancelled;
+    private transient JobResultCallback jobResultCallback;
+    private transient JobCallback jobCallback;
 
     // set when job is loaded
     private transient Context applicationContext;
@@ -57,6 +69,7 @@ abstract public class Job implements Serializable {
         this.persistent = params.isPersistent();
         this.groupId = params.getGroupId();
         this.priority = params.getPriority();
+        this.async = params.isAsync();
         this.delayInMs = Math.max(0, params.getDelayMs());
         this.deadlineInMs = Math.max(0, params.getDeadlineMs());
         this.cancelOnDeadline = params.shouldCancelOnDeadline();
@@ -86,6 +99,7 @@ abstract public class Job implements Serializable {
 
     /**
      * used by {@link JobManager} to assign proper priority at the time job is added.
+     *
      * @return priority (higher = better)
      */
     public final int getPriority() {
@@ -95,6 +109,7 @@ abstract public class Job implements Serializable {
     /**
      * used by {@link JobManager} to assign proper delay at the time job is added.
      * This field is not persisted!
+     *
      * @return delay in ms
      */
     public final long getDelayInMs() {
@@ -134,6 +149,7 @@ abstract public class Job implements Serializable {
         groupId = holder.groupId;
         priority = holder.getPriority();
         this.persistent = holder.persistent;
+        this.async = holder.async;
         readonlyTags = holder.tags;
         requiredNetworkType = holder.requiredNetworkType;
         sealed = true; //  deserialized jobs are sealed
@@ -146,6 +162,16 @@ abstract public class Job implements Serializable {
      */
     public final boolean isPersistent() {
         return persistent;
+    }
+
+
+    /**
+     * Whether this job will run synchronously or asynchronously.
+     *
+     * @return True if this job should async
+     */
+    public final boolean isAsync() {
+        return async;
     }
 
     /**
@@ -173,15 +199,16 @@ abstract public class Job implements Serializable {
 
     /**
      * Called when a job is cancelled.
+     *
      * @param cancelReason It is one of:
-     *                   <ul>
-     *                   <li>{@link CancelReason#REACHED_RETRY_LIMIT}</li>
-     *                   <li>{@link CancelReason#CANCELLED_VIA_SHOULD_RE_RUN}</li>
-     *                   <li>{@link CancelReason#CANCELLED_WHILE_RUNNING}</li>
-     *                   <li>{@link CancelReason#SINGLE_INSTANCE_WHILE_RUNNING}</li>
-     *                   <li>{@link CancelReason#SINGLE_INSTANCE_ID_QUEUED}</li>
-     *                   </ul>
-     * @param throwable The exception that was thrown from the last execution of {@link #onRun()}
+     *                     <ul>
+     *                     <li>{@link CancelReason#REACHED_RETRY_LIMIT}</li>
+     *                     <li>{@link CancelReason#CANCELLED_VIA_SHOULD_RE_RUN}</li>
+     *                     <li>{@link CancelReason#CANCELLED_WHILE_RUNNING}</li>
+     *                     <li>{@link CancelReason#SINGLE_INSTANCE_WHILE_RUNNING}</li>
+     *                     <li>{@link CancelReason#SINGLE_INSTANCE_ID_QUEUED}</li>
+     *                     </ul>
+     * @param throwable    The exception that was thrown from the last execution of {@link #onRun()}
      */
     abstract protected void onCancel(@CancelReason int cancelReason, @Nullable Throwable throwable);
 
@@ -199,10 +226,9 @@ abstract public class Job implements Serializable {
      * important (e.g. they use the same groupId), you should not change job's priority or add a
      * delay unless you really want to change their execution order.
      *
-     * @param throwable The exception that was thrown from {@link #onRun()}
-     * @param runCount The number of times this job run. Starts from 1.
+     * @param throwable   The exception that was thrown from {@link #onRun()}
+     * @param runCount    The number of times this job run. Starts from 1.
      * @param maxRunCount The max number of times this job can run. Decided by {@link #getRetryLimit()}
-     *
      * @return A {@link RetryConstraint} to decide whether this Job should be tried again or not and
      * if yes, whether we should add a delay or alter its priority. Returning null from this method
      * is equal to returning {@link RetryConstraint#RETRY}.
@@ -213,11 +239,11 @@ abstract public class Job implements Serializable {
      * Runs the job and catches any exception
      *
      * @param currentRunCount The current run count of the job
-     *
      * @return one of the RUN_RESULT ints
      */
     final int safeRun(JobHolder holder, int currentRunCount, Timer timer) {
         this.currentRunCount = currentRunCount;
+
         if (JqLog.isDebugEnabled()) {
             JqLog.d("running job %s", this.getClass().getSimpleName());
         }
@@ -237,7 +263,7 @@ abstract public class Job implements Serializable {
             cancelForDeadline = holder.shouldCancelOnDeadline()
                     && holder.getDeadlineNs() <= timer.nanoTime();
             reRun = currentRunCount < getRetryLimit() && !cancelForDeadline;
-            if(reRun && !cancelled) {
+            if (reRun && !cancelled) {
                 try {
                     RetryConstraint retryConstraint = shouldReRunOnThrowable(t, currentRunCount,
                             getRetryLimit());
@@ -277,6 +303,89 @@ abstract public class Job implements Serializable {
             return JobHolder.RUN_RESULT_FAIL_RUN_LIMIT;
         }
     }
+
+    /**
+     * Runs the job and catches any exception
+     *
+     * @param currentRunCount The current run count of the job
+     * @return one of the RUN_RESULT ints
+     */
+    final void safeRunAsync(final JobHolder holder, final int currentRunCount, final Timer timer, final JobResultCallback jobResultCallback) {
+        this.currentRunCount = currentRunCount;
+
+        this.jobResultCallback = jobResultCallback;
+
+        jobCallback = new JobCallback() {
+            @Override
+            public void onComplete() {
+
+                runResult = JobHolder.RUN_RESULT_SUCCESS;
+                jobResultCallback.onResult(runResult);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+
+                boolean reRun;
+                boolean failed;
+                boolean cancelForDeadline;
+
+                failed = true;
+                JqLog.e(throwable, "error while executing job %s", this);
+                cancelForDeadline = holder.shouldCancelOnDeadline()
+                        && holder.getDeadlineNs() <= timer.nanoTime();
+                reRun = currentRunCount < getRetryLimit() && !cancelForDeadline;
+                if (reRun && !cancelled) {
+                    try {
+                        RetryConstraint retryConstraint = shouldReRunOnThrowable(throwable, currentRunCount,
+                                getRetryLimit());
+                        if (retryConstraint == null) {
+                            retryConstraint = RetryConstraint.RETRY;
+                        }
+                        holder.retryConstraint = retryConstraint;
+                        reRun = retryConstraint.shouldRetry();
+                    } catch (Throwable t2) {
+                        JqLog.e(t2, "shouldReRunOnThrowable did throw an exception");
+                    }
+                }
+
+                JqLog.d("safeRunResult for %s : %s. re run:%s. cancelled: %s", this, !failed, reRun, cancelled);
+                if (holder.isCancelledSingleId()) {
+                    runResult = JobHolder.RUN_RESULT_FAIL_SINGLE_ID;
+                }
+                if (holder.isCancelled()) {
+                    runResult = JobHolder.RUN_RESULT_FAIL_FOR_CANCEL;
+                }
+                if (reRun) {
+                    runResult = JobHolder.RUN_RESULT_TRY_AGAIN;
+                }
+                if (cancelForDeadline) {
+                    runResult = JobHolder.RUN_RESULT_HIT_DEADLINE;
+                }
+                if (currentRunCount < getRetryLimit()) {
+                    // only set the Throwable if we are sure the Job is not gonna run again
+                    holder.setThrowable(throwable);
+                    runResult = JobHolder.RUN_RESULT_FAIL_SHOULD_RE_RUN;
+                } else {
+                    // only set the Throwable if we are sure the Job is not gonna run again
+                    holder.setThrowable(throwable);
+                    runResult = JobHolder.RUN_RESULT_FAIL_RUN_LIMIT;
+                }
+
+                jobResultCallback.onResult(runResult);
+            }
+        };
+
+        try {
+            onRun();
+            if (JqLog.isDebugEnabled()) {
+                JqLog.d("running job %s", this.getClass().getSimpleName());
+            }
+        } catch (Throwable throwable) {
+            jobCallback.onError(throwable);
+        }
+    }
+
 
     /**
      * Before each run, JobManager sets this number.
@@ -416,11 +525,29 @@ abstract public class Job implements Serializable {
         return requiredNetworkType >= NetworkUtil.UNMETERED;
     }
 
-    /**package**/ long getDeadlineInMs() {
+    /**
+     * package
+     **/
+    long getDeadlineInMs() {
         return deadlineInMs;
     }
 
-    /**package**/ boolean shouldCancelOnDeadline() {
+    /**
+     * package
+     **/
+    boolean shouldCancelOnDeadline() {
         return cancelOnDeadline;
+    }
+
+    public void completed() {
+        if (jobCallback != null) {
+            jobCallback.onComplete();
+        }
+    }
+
+    public void error(Throwable error) {
+        if (jobCallback != null) {
+            jobCallback.onError(error);
+        }
     }
 }

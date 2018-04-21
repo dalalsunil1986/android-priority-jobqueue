@@ -121,6 +121,7 @@ class JobManagerThread implements Runnable, NetworkEventProvider.Listener {
         JobHolder jobHolder = new JobHolder.Builder()
                 .priority(job.getPriority())
                 .job(job)
+                .async(job.isAsync())
                 .groupId(job.getRunGroupId())
                 .createdNs(now)
                 .delayUntilNs(delayUntilNs)

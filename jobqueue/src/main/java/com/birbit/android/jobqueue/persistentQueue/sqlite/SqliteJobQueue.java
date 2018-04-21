@@ -1,5 +1,12 @@
 package com.birbit.android.jobqueue.persistentQueue.sqlite;
 
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteDoneException;
+import android.database.sqlite.SQLiteStatement;
+import android.support.annotation.NonNull;
+import android.support.annotation.VisibleForTesting;
+
 import com.birbit.android.jobqueue.Constraint;
 import com.birbit.android.jobqueue.Job;
 import com.birbit.android.jobqueue.JobHolder;
@@ -8,13 +15,6 @@ import com.birbit.android.jobqueue.JobQueue;
 import com.birbit.android.jobqueue.Params;
 import com.birbit.android.jobqueue.config.Configuration;
 import com.birbit.android.jobqueue.log.JqLog;
-
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
-import android.database.sqlite.SQLiteDoneException;
-import android.database.sqlite.SQLiteStatement;
-import android.support.annotation.NonNull;
-import android.support.annotation.VisibleForTesting;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -173,6 +173,7 @@ public class SqliteJobQueue implements JobQueue {
         stmt.bindLong(DbOpenHelper.CANCEL_ON_DEADLINE_COLUMN.columnIndex + 1,
                 jobHolder.shouldCancelOnDeadline() ? 1 : 0);
         stmt.bindLong(DbOpenHelper.CANCELLED_COLUMN.columnIndex + 1, jobHolder.isCancelled() ? 1 : 0);
+        stmt.bindLong(DbOpenHelper.ASYNC_COLUMN.columnIndex + 1, jobHolder.isAsync() ? 1 : 0);
     }
 
     /**
@@ -438,6 +439,7 @@ public class SqliteJobQueue implements JobQueue {
                 .delayUntilNs(cursor.getLong(DbOpenHelper.DELAY_UNTIL_NS_COLUMN.columnIndex))
                 .runningSessionId(cursor.getLong(DbOpenHelper.RUNNING_SESSION_ID_COLUMN.columnIndex))
                 .requiredNetworkType(cursor.getInt(DbOpenHelper.REQUIRED_NETWORK_TYPE_COLUMN.columnIndex))
+                .async(cursor.getInt(DbOpenHelper.ASYNC_COLUMN.columnIndex)==0?false:true)
                 .build();
         return holder;
     }

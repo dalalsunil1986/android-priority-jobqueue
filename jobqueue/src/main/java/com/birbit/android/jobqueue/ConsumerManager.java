@@ -1,7 +1,9 @@
 package com.birbit.android.jobqueue;
 
 import android.support.annotation.NonNull;
+import android.util.Log;
 
+import com.birbit.android.jobqueue.callback.JobResultCallback;
 import com.birbit.android.jobqueue.config.Configuration;
 import com.birbit.android.jobqueue.log.JqLog;
 import com.birbit.android.jobqueue.messaging.Message;
@@ -67,7 +69,7 @@ class ConsumerManager {
             = new CopyOnWriteArrayList<>();
 
     ConsumerManager(JobManagerThread jobManagerThread, Timer timer, MessageFactory factory,
-            Configuration configuration) {
+                    Configuration configuration) {
         this.jobManagerThread = jobManagerThread;
         this.timer = timer;
         this.factory = factory;
@@ -221,7 +223,7 @@ class ConsumerManager {
             final boolean tooMany = consumers.size() > minConsumerCount;
             boolean kill = !running || (tooMany && keepAliveTimeout < timer.nanoTime());
             JqLog.v("Consumer idle, will kill? %s. isRunning: %s. too many? %s timeout: %s now: %s",
-                    kill, running, tooMany, keepAliveTimeout, timer.nanoTime() );
+                    kill, running, tooMany, keepAliveTimeout, timer.nanoTime());
             if (kill) {
                 CommandMessage command = factory.obtain(CommandMessage.class);
                 command.set(CommandMessage.QUIT);
@@ -288,7 +290,7 @@ class ConsumerManager {
     }
 
     void handleRunJobResult(RunJobResultMessage message, JobHolder jobHolder,
-            RetryConstraint retryConstraint) {
+                            RetryConstraint retryConstraint) {
         Consumer consumer = (Consumer) message.getWorker();
         if (!consumer.hasJob) {
             throw new IllegalStateException("this worker should not have a job");
@@ -319,7 +321,7 @@ class ConsumerManager {
             if (!jobHolder.getJob().isPersistent()) {
                 continue;
             }
-            if(constraint.getNetworkStatus() >= jobHolder.requiredNetworkType) {
+            if (constraint.getNetworkStatus() >= jobHolder.requiredNetworkType) {
                 return true;
             }
         }
@@ -382,7 +384,7 @@ class ConsumerManager {
         }
 
         public Consumer(MessageQueue parentMessageQueue, SafeMessageQueue messageQueue,
-                MessageFactory factory, Timer timer) {
+                        MessageFactory factory, Timer timer) {
             this.messageQueue = messageQueue;
             this.factory = factory;
             this.parentMessageQueue = parentMessageQueue;
@@ -409,15 +411,33 @@ class ConsumerManager {
 
         private void handleRunJob(RunJobMessage message) {
             JqLog.d("running job %s", message.getJobHolder().getClass().getSimpleName());
-            JobHolder jobHolder = message.getJobHolder();
-            int result = jobHolder.safeRun(jobHolder.getRunCount(), timer);
-            RunJobResultMessage resultMessage = factory.obtain(RunJobResultMessage.class);
-            resultMessage.setJobHolder(jobHolder);
-            resultMessage.setResult(result);
-            resultMessage.setWorker(this);
-            // update time here before posting the result
-            lastJobCompleted = timer.nanoTime();
-            parentMessageQueue.post(resultMessage);
+            final JobHolder jobHolder = message.getJobHolder();
+
+            if (jobHolder.job.isAsync()) {
+
+                Log.v("Jobber","running");
+                jobHolder.safeRunAsync(jobHolder.getRunCount(), timer, new JobResultCallback() {
+                    @Override
+                    public void onResult(int result) {
+                        RunJobResultMessage resultMessage = factory.obtain(RunJobResultMessage.class);
+                        resultMessage.setJobHolder(jobHolder);
+                        resultMessage.setResult(result);
+                        resultMessage.setWorker(this);
+                        // update time here before posting the result
+                        lastJobCompleted = timer.nanoTime();
+                        parentMessageQueue.post(resultMessage);
+                    }
+                });
+            } else {
+                int result = jobHolder.safeRun(jobHolder.getRunCount(), timer);
+                RunJobResultMessage resultMessage = factory.obtain(RunJobResultMessage.class);
+                resultMessage.setJobHolder(jobHolder);
+                resultMessage.setResult(result);
+                resultMessage.setWorker(this);
+                // update time here before posting the result
+                lastJobCompleted = timer.nanoTime();
+                parentMessageQueue.post(resultMessage);
+            }
         }
     }
 }

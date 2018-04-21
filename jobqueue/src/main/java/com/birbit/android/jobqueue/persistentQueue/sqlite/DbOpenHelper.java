@@ -23,6 +23,7 @@ public class DbOpenHelper extends SQLiteOpenHelper {
     /*package*/ static final SqlHelper.Property DEADLINE_COLUMN = new SqlHelper.Property("deadline", "integer", 9);
     /*package*/ static final SqlHelper.Property CANCEL_ON_DEADLINE_COLUMN = new SqlHelper.Property("cancel_on_deadline", "integer", 10);
     /*package*/ static final SqlHelper.Property CANCELLED_COLUMN = new SqlHelper.Property("cancelled", "integer", 11);
+    /*package*/ static final SqlHelper.Property ASYNC_COLUMN = new SqlHelper.Property("async", "integer", 12);
 
     /*package*/ static final SqlHelper.Property TAGS_ID_COLUMN = new SqlHelper.Property("_id", "integer", 0);
     /*package*/ static final SqlHelper.Property TAGS_JOB_ID_COLUMN = new SqlHelper.Property("job_id", "text", 1, new SqlHelper.ForeignKey(JOB_HOLDER_TABLE_NAME, ID_COLUMN.columnName));
@@ -30,7 +31,7 @@ public class DbOpenHelper extends SQLiteOpenHelper {
 
 
 
-    /*package*/ static final int COLUMN_COUNT = 12;
+    /*package*/ static final int COLUMN_COUNT = 13;
     /*package*/ static final int TAGS_COLUMN_COUNT = 3;
 
     static final String TAG_INDEX_NAME = "TAG_NAME_INDEX";
@@ -53,7 +54,8 @@ public class DbOpenHelper extends SQLiteOpenHelper {
                 REQUIRED_NETWORK_TYPE_COLUMN,
                 DEADLINE_COLUMN,
                 CANCEL_ON_DEADLINE_COLUMN,
-                CANCELLED_COLUMN
+                CANCELLED_COLUMN,
+                ASYNC_COLUMN
         );
         sqLiteDatabase.execSQL(createQuery);
         String createTagsQuery = SqlHelper.create(JOB_TAGS_TABLE_NAME,
@@ -70,6 +72,7 @@ public class DbOpenHelper extends SQLiteOpenHelper {
     public void onUpgrade(SQLiteDatabase sqLiteDatabase, int oldVersion, int newVersion) {
         if (oldVersion == 11) {
             addCancelColumn(sqLiteDatabase);
+            addAsyncColumn(sqLiteDatabase);
         } else {
             sqLiteDatabase.execSQL(SqlHelper.drop(JOB_HOLDER_TABLE_NAME));
             sqLiteDatabase.execSQL(SqlHelper.drop(JOB_TAGS_TABLE_NAME));
@@ -83,6 +86,13 @@ public class DbOpenHelper extends SQLiteOpenHelper {
                 + CANCELLED_COLUMN.columnName + " " + CANCELLED_COLUMN.type;
         sqLiteDatabase.execSQL(query);
     }
+
+    private void addAsyncColumn(SQLiteDatabase sqLiteDatabase) {
+        String query = "ALTER TABLE " + JOB_HOLDER_TABLE_NAME + " ADD COLUMN "
+                + ASYNC_COLUMN.columnName + " " + ASYNC_COLUMN.type;
+        sqLiteDatabase.execSQL(query);
+    }
+
 
     @Override
     public void onDowngrade(SQLiteDatabase sqLiteDatabase, int oldVersion, int newVersion) {

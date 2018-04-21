@@ -4,6 +4,7 @@ import android.content.Context;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
+import com.birbit.android.jobqueue.callback.JobResultCallback;
 import com.birbit.android.jobqueue.network.NetworkUtil;
 import com.birbit.android.jobqueue.timer.Timer;
 
@@ -53,6 +54,7 @@ public class JobHolder {
     private Long insertionOrder;
     public final String id;
     public final boolean persistent;
+    public final boolean async;
     private int priority;
     public final String groupId;
     private int runCount;
@@ -104,10 +106,11 @@ public class JobHolder {
      * @param deadlineNs       System.nanotime value: when the job will ignore its constraints
      * @param cancelOnDeadline true if job should be cancelled when deadline is reached, false otherwise
      */
-    private JobHolder(String id, boolean persistent, int priority, String groupId, int runCount, Job job, long createdNs,
+    private JobHolder(String id, boolean persistent,boolean async, int priority, String groupId, int runCount, Job job, long createdNs,
                       long delayUntilNs, long runningSessionId, Set<String> tags,
                       int requiredNetworkType, long deadlineNs, boolean cancelOnDeadline) {
         this.id = id;
+        this.async = async;
         this.persistent = persistent;
         this.priority = priority;
         this.groupId = groupId;
@@ -131,6 +134,17 @@ public class JobHolder {
     int safeRun(int currentRunCount, Timer timer) {
         return job.safeRun(this, currentRunCount, timer);
     }
+
+    /**
+     * runs the job w/o throwing any exceptions
+     * @param currentRunCount The current run count of the job
+     *
+     * @return RUN_RESULT
+     */
+    void safeRunAsync(int currentRunCount, Timer timer, JobResultCallback jobResultCallback) {
+         job.safeRunAsync(this, currentRunCount, timer,jobResultCallback);
+    }
+
 
     @NonNull public String getId() {
         return id;
@@ -257,6 +271,10 @@ public class JobHolder {
         this.job.setDeadlineReached(didReachDeadline);
     }
 
+    public boolean isAsync() {
+        return async;
+    }
+
     public boolean hasDeadline() {
         return deadlineNs != Params.FOREVER;
     }
@@ -304,6 +322,7 @@ public class JobHolder {
         private String id;
         private static final int FLAG_PERSISTENT = FLAG_PRIORITY << 1;
         private boolean persistent;
+        private boolean async;
         private static final int FLAG_ID = FLAG_PERSISTENT << 1;
         private String groupId;
         private static final int FLAG_GROUP_ID = FLAG_ID << 1;
@@ -356,6 +375,12 @@ public class JobHolder {
             providedFlags |= FLAG_PERSISTENT;
             return this;
         }
+
+        public Builder async(boolean async) {
+            this.async = async;
+            return this;
+        }
+
 
         public Builder job(Job job) {
             this.job = job;
@@ -411,7 +436,7 @@ public class JobHolder {
                 throw new IllegalArgumentException("must provide all required fields. your result:" + Long.toBinaryString(flagCheck));
             }
 
-            JobHolder jobHolder = new JobHolder(id, persistent, priority, groupId, runCount, job, createdNs,
+            JobHolder jobHolder = new JobHolder(id, persistent,async, priority, groupId, runCount, job, createdNs,
                     delayUntilNs, runningSessionId, tags, requiredNetworkType, deadlineNs, cancelOnDeadline);
             if (insertionOrder != null) {
                 jobHolder.setInsertionOrder(insertionOrder);
