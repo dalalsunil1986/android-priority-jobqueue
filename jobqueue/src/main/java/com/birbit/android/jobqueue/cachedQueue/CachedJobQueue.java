@@ -48,7 +48,10 @@ public class CachedJobQueue implements JobQueue {
     @Override
     public void remove(@NonNull JobHolder jobHolder) {
         invalidateCache();
-        delegate.remove(jobHolder);
+        try{
+          delegate.remove(jobHolder);
+        }catch(Exception e)
+        {}
     }
 
     @Override
