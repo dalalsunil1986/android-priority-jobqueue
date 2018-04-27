@@ -39,7 +39,7 @@ public class JobManager {
      */
     public static final long MIN_DELAY_TO_USE_SCHEDULER_IN_MS = 1000 * 30;
 
-    final JobManagerThread jobManagerThread;
+    public final JobManagerThread jobManagerThread;
     private final PriorityMessageQueue messageQueue;
     private final MessageFactory messageFactory;
     @SuppressWarnings("FieldCanBeLocal")
