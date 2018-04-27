@@ -461,7 +461,7 @@ public class JobManager {
         new IntQueryFuture<>(messageQueue, message).getSafe();
     }
 
-    void internalRunInJobManagerThread(final Runnable runnable) throws Throwable {
+    public void internalRunInJobManagerThread(final Runnable runnable) throws Throwable {
         final Throwable[] error = new Throwable[1];
         final PublicQueryMessage message = messageFactory.obtain(PublicQueryMessage.class);
         message.set(PublicQueryMessage.INTERNAL_RUNNABLE, null);
