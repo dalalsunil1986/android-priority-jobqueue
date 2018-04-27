@@ -630,12 +630,12 @@ class JobManagerThread implements Runnable, NetworkEventProvider.Listener {
     }
 
     // Used for testing
-    JobHolder getNextJobForTesting() {
+    public JobHolder getNextJobForTesting() {
         return getNextJobForTesting(null);
     }
 
     // Used for testing
-    JobHolder getNextJobForTesting(Collection<String> runningJobGroups) {
+    public JobHolder getNextJobForTesting(Collection<String> runningJobGroups) {
         return getNextJob(runningJobGroups, true);
     }
 
