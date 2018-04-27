@@ -43,7 +43,7 @@ class JobManagerThread implements Runnable, NetworkEventProvider.Listener {
     @SuppressWarnings("FieldCanBeLocal")
     private final long sessionId;
     final JobQueue persistentJobQueue;
-    final JobQueue nonPersistentJobQueue;
+    public final JobQueue nonPersistentJobQueue;
     private final NetworkUtil networkUtil;
     private final DependencyInjector dependencyInjector;
     private final MessageFactory messageFactory;
