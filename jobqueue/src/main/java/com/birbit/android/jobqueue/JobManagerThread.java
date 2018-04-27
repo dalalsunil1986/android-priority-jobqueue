@@ -639,11 +639,11 @@ class JobManagerThread implements Runnable, NetworkEventProvider.Listener {
         return getNextJob(runningJobGroups, true);
     }
 
-    JobHolder getNextJob(Collection<String> runningJobGroups) {
+    public JobHolder getNextJob(Collection<String> runningJobGroups) {
         return getNextJob(runningJobGroups, false);
     }
 
-    JobHolder getNextJob(Collection<String> runningJobGroups, boolean ignoreRunning) {
+    public JobHolder getNextJob(Collection<String> runningJobGroups, boolean ignoreRunning) {
         if (!running && !ignoreRunning) {
             return null;
         }
